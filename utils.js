@@ -1,6 +1,6 @@
-// Helper murni (tanpa import GNOME) supaya bisa dipakai extension.js dan prefs.js.
+// Pure helpers with no GNOME imports, shared by extension.js and prefs.js.
 
-/** "bbca" -> "BBCA.JK", "ihsg" -> "^JKSE", "^GSPC"/"BBCA.JK" dibiarkan. */
+/** "bbca" -> "BBCA.JK", "ihsg" -> "^JKSE"; "^GSPC" and "BBCA.JK" are unchanged. */
 export function normalize(raw) {
     const s = String(raw ?? '').trim().toUpperCase();
     if (!s)
@@ -21,7 +21,7 @@ export function displayName(sym) {
 export const digitsFor = sym => (sym.startsWith('^') ? 2 : 0);
 
 export function fmt(n, digits = 2) {
-    return n.toLocaleString('id-ID', {
+    return n.toLocaleString('en-US', {
         minimumFractionDigits: digits,
         maximumFractionDigits: digits,
     });

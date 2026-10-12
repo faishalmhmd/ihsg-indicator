@@ -17,12 +17,9 @@ Gio._promisify(Soup.Session.prototype, 'send_and_read_async');
 const BASE = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)';
 
-const COLOR_UP = '#26a269';
-const COLOR_DOWN = '#e01b24';
 const CHG_STYLE = 'margin-left: 12px; min-width: 72px; text-align: right;';
 const SLIDE_MS = 300;
 
-const colorOf = diff => (diff > 0 ? COLOR_UP : diff < 0 ? COLOR_DOWN : null);
 const arrowOf = diff => (diff > 0 ? '▲' : diff < 0 ? '▼' : '•');
 
 const Indicator = GObject.registerClass(
@@ -39,11 +36,11 @@ class Indicator extends PanelMenu.Button {
         this._rows = new Map();     // symbol -> {price, chg}
         this._fetchedAt = null;
         this._error = null;
-        this._idx = 0;              // emiten yang sedang tampil di top bar
-        this._active = 0;           // slide yang sedang tampil (0/1)
+        this._idx = 0;              // Symbol currently shown in the top bar.
+        this._active = 0;           // Currently visible slide (0/1).
         this._destroyed = false;
 
-        // Top bar: dua slide yang bergantian (scroll vertikal)
+        // Top bar: two slides rotate with a vertical scroll animation.
         this._clip = new St.Widget({
             layout_manager: new Clutter.BinLayout(),
             clip_to_allocation: true,
@@ -55,7 +52,7 @@ class Indicator extends PanelMenu.Button {
         this._slides[0].actor.visible = true;
         this.add_child(this._clip);
 
-        // Menu: semua emiten
+        // Menu: all symbols.
         this._list = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._list);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -63,7 +60,7 @@ class Indicator extends PanelMenu.Button {
         this._info = new PopupMenu.PopupMenuItem('—', {reactive: false});
         this.menu.addMenuItem(this._info);
 
-        const refresh = new PopupMenu.PopupMenuItem('Refresh sekarang');
+        const refresh = new PopupMenu.PopupMenuItem('Refresh now');
         refresh.connect('activate', () => this._refresh());
         this.menu.addMenuItem(refresh);
 
@@ -80,7 +77,8 @@ class Indicator extends PanelMenu.Button {
             }),
             this._settings.connect('changed::refresh-interval', () => this._scheduleRefresh()),
             this._settings.connect('changed::rotate-interval', () => this._scheduleRotate()),
-            this._settings.connect('changed::show-change', () => this._render()),
+            this._settings.connect('changed::up-color', () => this._render()),
+            this._settings.connect('changed::down-color', () => this._render()),
         ];
 
         this._buildRows();
@@ -90,7 +88,7 @@ class Indicator extends PanelMenu.Button {
         this._scheduleRotate();
     }
 
-    // ---------- top bar slides ----------
+    // ---------- Top bar slides ----------
 
     _makeSlide() {
         const actor = new St.BoxLayout({
@@ -130,15 +128,21 @@ class Indicator extends PanelMenu.Button {
         } else {
             const diff = q.price - q.prev;
             const pct = q.prev ? (diff / q.prev) * 100 : 0;
-            let text = `${fmt(q.price, digitsFor(sym))} ${arrowOf(diff)}`;
-            if (this._settings.get_boolean('show-change'))
-                text += `${fmt(Math.abs(pct), 2)}%`;
+            let text = `${arrowOf(diff)} ${fmt(Math.abs(pct), 2)}%`;
             if (q.stale)
                 text += ' !';
             slide.value.text = text;
-            const c = colorOf(diff);
+            const c = this._colorOf(diff);
             slide.value.set_style(c ? `color: ${c};` : null);
         }
+    }
+
+    _colorOf(diff) {
+        if (diff > 0)
+            return this._settings.get_string('up-color');
+        if (diff < 0)
+            return this._settings.get_string('down-color');
+        return null;
     }
 
     _currentSymbol() {
@@ -183,7 +187,7 @@ class Indicator extends PanelMenu.Button {
         this._active = 1 - this._active;
     }
 
-    // ---------- menu rows ----------
+    // ---------- Menu rows ----------
 
     _symbols() {
         return this._settings.get_strv('symbols');
@@ -206,7 +210,7 @@ class Indicator extends PanelMenu.Button {
         }
     }
 
-    // ---------- timers ----------
+    // ---------- Timers ----------
 
     _scheduleRefresh() {
         if (this._refreshId)
@@ -228,7 +232,7 @@ class Indicator extends PanelMenu.Button {
         });
     }
 
-    // ---------- data ----------
+    // ---------- Data ----------
 
     async _fetchOne(sym) {
         const url = `${BASE}${encodeURIComponent(sym)}?interval=1d&range=1d`;
@@ -244,7 +248,7 @@ class Indicator extends PanelMenu.Button {
         const json = JSON.parse(new TextDecoder().decode(bytes.get_data()));
         const result = json.chart?.result?.[0];
         if (!result)
-            throw new Error(`${sym}: ${json.chart?.error?.description ?? 'tidak ditemukan'}`);
+            throw new Error(`${sym}: ${json.chart?.error?.description ?? 'symbol not found'}`);
 
         const m = result.meta;
         return {
@@ -283,7 +287,7 @@ class Indicator extends PanelMenu.Button {
     }
 
     _render() {
-        // Baris menu
+        // Menu rows.
         for (const sym of this._symbols()) {
             const row = this._rows.get(sym);
             const q = this._quotes.get(sym);
@@ -300,22 +304,22 @@ class Indicator extends PanelMenu.Button {
             const pct = q.prev ? (diff / q.prev) * 100 : 0;
             row.price.text = fmt(q.price, digitsFor(sym)) + (q.stale ? ' !' : '');
             row.chg.text = `${arrowOf(diff)} ${fmt(Math.abs(pct), 2)}%`;
-            const c = colorOf(diff);
+            const c = this._colorOf(diff);
             row.chg.set_style(c ? `${CHG_STYLE} color: ${c};` : CHG_STYLE);
         }
 
-        // Slide yang sedang tampil di top bar (tanpa animasi)
+        // Current top bar slide (without animation).
         this._fillSlide(this._slides[this._active], this._currentSymbol());
 
-        // Info: waktu kuote dari Yahoo vs waktu fetch (untuk lihat delay)
+        // Quote time from Yahoo versus fetch time, to show any delay.
         const times = [...this._quotes.values()].filter(q => q.time).map(q => q.time);
         const parts = [];
         if (times.length)
-            parts.push(`Kuote ${timeWIB(Math.max(...times))} WIB`);
+            parts.push(`Quote ${timeWIB(Math.max(...times))} WIB`);
         if (this._fetchedAt)
-            parts.push(`fetch ${this._fetchedAt.toLocaleTimeString('en-GB')}`);
+            parts.push(`Fetched ${this._fetchedAt.toLocaleTimeString('en-GB')}`);
         this._info.label.text = this._error
-            ? `Gagal: ${this._error}`
+            ? `Error: ${this._error}`
             : parts.join(' · ') || '—';
     }
 
@@ -344,7 +348,7 @@ export default class IhsgExtension extends Extension {
             this._settings.connect(`changed::${key}`, () => this._place()));
     }
 
-    // (Re)pasang indikator sesuai posisi + offset di settings
+    // Place the indicator according to its position and offset settings.
     _place() {
         this._indicator?.destroy();
         this._indicator = new Indicator(this);

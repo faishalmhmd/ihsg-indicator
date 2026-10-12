@@ -1,7 +1,7 @@
 {
   "uuid": "ihsg-indicator@faishalmhmd.dev",
   "name": "IHSG Indicator",
-  "description": "Menampilkan IHSG dan daftar emiten pilihan (data Yahoo Finance) di top bar GNOME Shell.",
+  "description": "Displays the IHSG and selected stocks using Yahoo Finance data in the GNOME Shell top bar.",
   "shell-version": ["48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.ihsg-indicator",
   "url": "https://github.com/faishalmhmd/ihsg-indicator"

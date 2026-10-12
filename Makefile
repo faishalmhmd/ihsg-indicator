@@ -7,7 +7,7 @@ pack:
 install: pack
 > gnome-extensions install --force $(UUID).shell-extension.zip
 
-# symlink repo ke folder extension (untuk development)
+# Symlink the repo into the extension directory for development.
 dev:
 > glib-compile-schemas schemas/
 > ln -sfn $(CURDIR) $(HOME)/.local/share/gnome-shell/extensions/$(UUID)

@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
@@ -11,15 +12,15 @@ export default class IhsgPrefs extends ExtensionPreferences {
         const settings = this.getSettings();
         const page = new Adw.PreferencesPage({title: 'General'});
 
-        // --- Daftar emiten ---
+        // --- Symbols ---
         const listGroup = new Adw.PreferencesGroup({
-            title: 'Daftar emiten',
-            description: 'Top bar berganti per emiten secara bergulir; semuanya muncul di menu.',
+            title: 'Symbols',
+            description: 'The top bar rotates through symbols; all symbols are listed in the menu.',
         });
         const addGroup = new Adw.PreferencesGroup();
 
         const entry = new Adw.EntryRow({
-            title: 'Tambah emiten (mis. BBCA, TLKM, IHSG)',
+            title: 'Add symbol (e.g. BBCA, TLKM, IHSG)',
             show_apply_button: true,
         });
         addGroup.add(entry);
@@ -51,7 +52,7 @@ export default class IhsgPrefs extends ExtensionPreferences {
                         icon_name: 'go-up-symbolic',
                         valign: Gtk.Align.CENTER,
                         css_classes: ['flat'],
-                        tooltip_text: 'Naikkan',
+                        tooltip_text: 'Move up',
                     });
                     up.connect('clicked', () => {
                         const l = settings.get_strv('symbols');
@@ -65,7 +66,7 @@ export default class IhsgPrefs extends ExtensionPreferences {
                     icon_name: 'user-trash-symbolic',
                     valign: Gtk.Align.CENTER,
                     css_classes: ['flat'],
-                    tooltip_text: 'Hapus',
+                    tooltip_text: 'Remove',
                 });
                 del.connect('clicked', () => {
                     const l = settings.get_strv('symbols');
@@ -82,16 +83,16 @@ export default class IhsgPrefs extends ExtensionPreferences {
         window.connect('close-request', () => settings.disconnect(symId));
         rebuild();
 
-        // --- Posisi di panel ---
+        // --- Panel position ---
         const POS = ['left', 'center', 'right'];
         const posGroup = new Adw.PreferencesGroup({
-            title: 'Posisi di panel',
-            description: 'Offset = urutan di dalam area yang dipilih. 0 = paling kiri di area itu; naikkan untuk menggeser ke kanan.',
+            title: 'Panel position',
+            description: 'Offset sets the order within the selected area. 0 is the leftmost position; increase it to move right.',
         });
 
         const posRow = new Adw.ComboRow({
             title: 'Area',
-            model: Gtk.StringList.new(['Kiri', 'Tengah', 'Kanan']),
+            model: Gtk.StringList.new(['Left', 'Center', 'Right']),
         });
         posRow.selected = Math.max(0, POS.indexOf(settings.get_string('panel-position')));
         posRow.connect('notify::selected', () =>
@@ -107,12 +108,12 @@ export default class IhsgPrefs extends ExtensionPreferences {
         posGroup.add(offsetRow);
         settings.bind('panel-offset', offsetRow, 'value', Gio.SettingsBindFlags.DEFAULT);
 
-        // --- Umum ---
-        const general = new Adw.PreferencesGroup({title: 'Umum'});
+        // --- General ---
+        const general = new Adw.PreferencesGroup({title: 'General'});
 
         const interval = new Adw.SpinRow({
-            title: 'Interval refresh data',
-            subtitle: 'Dalam detik (15–3600)',
+            title: 'Data refresh interval',
+            subtitle: 'In seconds (15–3600)',
             adjustment: new Gtk.Adjustment({
                 lower: 15, upper: 3600, step_increment: 15, page_increment: 60,
             }),
@@ -121,8 +122,8 @@ export default class IhsgPrefs extends ExtensionPreferences {
         settings.bind('refresh-interval', interval, 'value', Gio.SettingsBindFlags.DEFAULT);
 
         const rotate = new Adw.SpinRow({
-            title: 'Jeda ganti emiten di top bar',
-            subtitle: 'Dalam detik (2–60)',
+            title: 'Symbol rotation interval',
+            subtitle: 'In seconds (2–60)',
             adjustment: new Gtk.Adjustment({
                 lower: 2, upper: 60, step_increment: 1, page_increment: 5,
             }),
@@ -130,16 +131,45 @@ export default class IhsgPrefs extends ExtensionPreferences {
         general.add(rotate);
         settings.bind('rotate-interval', rotate, 'value', Gio.SettingsBindFlags.DEFAULT);
 
-        const change = new Adw.SwitchRow({
-            title: 'Tampilkan % perubahan di top bar',
+        const colors = new Adw.PreferencesGroup({
+            title: 'Change colors',
+            description: 'Choose the colors used for rising and falling values.',
         });
-        general.add(change);
-        settings.bind('show-change', change, 'active', Gio.SettingsBindFlags.DEFAULT);
+        const colorSignalIds = [];
+        const addColorRow = (title, key) => {
+            const row = new Adw.ActionRow({title});
+            const colorButton = new Gtk.ColorDialogButton({
+                dialog: new Gtk.ColorDialog(),
+                valign: Gtk.Align.CENTER,
+            });
+            let applyingSetting = false;
+            const updateButton = () => {
+                const rgba = new Gdk.RGBA();
+                if (rgba.parse(settings.get_string(key))) {
+                    applyingSetting = true;
+                    colorButton.rgba = rgba;
+                    applyingSetting = false;
+                }
+            };
+            updateButton();
+            colorButton.connect('notify::rgba', () => {
+                if (!applyingSetting)
+                    settings.set_string(key, colorButton.rgba.to_string());
+            });
+            colorSignalIds.push(settings.connect(`changed::${key}`, updateButton));
+            row.add_suffix(colorButton);
+            colors.add(row);
+        };
+        addColorRow('Rising value color', 'up-color');
+        addColorRow('Falling value color', 'down-color');
+        window.connect('close-request', () =>
+            colorSignalIds.forEach(id => settings.disconnect(id)));
 
         page.add(posGroup);
         page.add(listGroup);
         page.add(addGroup);
         page.add(general);
+        page.add(colors);
         window.add(page);
     }
 }
